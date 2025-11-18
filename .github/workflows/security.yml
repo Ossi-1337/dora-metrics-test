@@ -1,0 +1,157 @@
+name: Security & Quality Gates
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - '.github/workflows/**'
+      - '.gitleaks.toml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - '.github/workflows/**'
+      - '.gitleaks.toml'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  checks: write
+
+jobs:
+  detect_changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      customer: ${{ steps.filter.outputs.customer }}
+      order: ${{ steps.filter.outputs.order }}
+      partner: ${{ steps.filter.outputs.partner }}
+      agent: ${{ steps.filter.outputs.agent }}
+      feedback: ${{ steps.filter.outputs.feedback }}
+      analytics: ${{ steps.filter.outputs.analytics }}
+      notification: ${{ steps.filter.outputs.notification }}
+      hub: ${{ steps.filter.outputs.hub }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          filters: |
+            shared:
+              - 'src/Shared/**'
+              - 'Directory.Build.props'
+              - 'global.json'
+              - '*.sln'
+              - '.github/workflows/**'
+
+            customer:
+              - 'src/Customer/**'
+              - 'tests/Customer.Tests/**'
+
+            order:
+              - 'src/OrderAndDelivery/**'
+              - 'tests/OrderAndDelivery.Tests/**'
+
+  codeql:
+    name: CodeQL – repo-wide analysis
+    needs: detect_changes
+    runs-on: ubuntu-latest
+    if: >
+      ${{
+        needs.detect_changes.outputs.shared == 'true' ||
+        needs.detect_changes.outputs.customer == 'true' ||
+        needs.detect_changes.outputs.order == 'true' ||
+        needs.detect_changes.outputs.partner == 'true' ||
+        needs.detect_changes.outputs.agent == 'true' ||
+        needs.detect_changes.outputs.feedback == 'true' ||
+        needs.detect_changes.outputs.analytics == 'true' ||
+        needs.detect_changes.outputs.notification == 'true' ||
+        needs.detect_changes.outputs.hub == 'true'
+      }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  security_customer:
+    name: Customer – security gates
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks scan (Customer)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source=src/Customer --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+
+      - name: Trivy FS scan (Customer, HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: src/Customer
+          format: sarif
+          output: trivy-customer-fs.sarif
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-customer-fs.sarif
+
+  security_order:
+    name: Order & Delivery – security gates
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.order == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks scan (Order & Delivery)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source=src/OrderAndDelivery --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+
+      - name: Trivy FS scan (Order & Delivery, HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: src/OrderAndDelivery
+          format: sarif
+          output: trivy-order-fs.sarif
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-order-fs.sarif

@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - '.github/workflows/**'
+
+jobs:
+  detect_changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      customer: ${{ steps.filter.outputs.customer }}
+      order: ${{ steps.filter.outputs.order }}
+      partner: ${{ steps.filter.outputs.partner }}
+      agent: ${{ steps.filter.outputs.agent }}
+      feedback: ${{ steps.filter.outputs.feedback }}
+      analytics: ${{ steps.filter.outputs.analytics }}
+      notification: ${{ steps.filter.outputs.notification }}
+      hub: ${{ steps.filter.outputs.hub }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          filters: |
+            # Fælles kode / config der påvirker flere services
+            shared:
+              - 'src/Shared/**'
+              - 'Directory.Build.props'
+              - 'global.json'
+              - '*.sln'
+              - '.github/workflows/**'
+
+            customer:
+              - 'src/Customer/**'
+              - 'tests/Customer.Tests/**'
+
+            order:
+              - 'src/OrderAndDelivery/**'
+              - 'tests/OrderAndDelivery.Tests/**'
+
+  customer_ci:
+    name: Customer – build, test & docker
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/Customer/Customer.Api.csproj
+
+      - name: Build
+        run: dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/Customer.Tests/Customer.Tests.csproj -c Release --no-build
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ghcr.io/Ossi-1337/mtogo-customer:${{ github.sha }} \
+            src/Customer
+
+  order_ci:
+    name: Order & Delivery – build, test & docker
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.order == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
+
+      - name: Build
+        run: dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/OrderAndDelivery.Tests/OrderAndDelivery.Tests.csproj -c Release --no-build
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ghcr.io/Ossi-1337/mtogo-order-and-delivery:${{ github.sha }} \
+            src/OrderAndDelivery

@@ -1,75 +1,53 @@
-name: DORA Metrics (pushes to main)
+name: DORA metrics
 
 on:
-  # Run every night at 00:30 UTC (adjust as you like)
   schedule:
-    - cron: "30 0 * * *"
-  # Allow manual runs from Actions tab
-  workflow_dispatch:
+    # Runs every day at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
 
 jobs:
   dora-metrics:
-    name: Calculate DORA metrics
     runs-on: ubuntu-latest
 
-    # Config you can tweak
     env:
-      MAIN_BRANCH: main        # change to "master" etc if needed
-      INCIDENT_LABEL: incident # label used for prod incidents
-      WINDOW_DAYS: "30"        # lookback window for metrics
+      MAIN_BRANCH: main
+      WINDOW_DAYS: 30            # look back this many days
+      CI_WORKFLOW: ci.yml
+      SECURITY_WORKFLOW: security.yml
 
-    permissions:
-      contents: read
-      issues: read
+    outputs:
+      deployment_frequency: ${{ steps.dora.outputs.deployment_frequency }}
+      lead_time_hours_avg: ${{ steps.dora.outputs.lead_time_hours_avg }}
+      lead_time_hours_median: ${{ steps.dora.outputs.lead_time_hours_median }}
+      change_failure_rate: ${{ steps.dora.outputs.change_failure_rate }}
+      mttr_hours: ${{ steps.dora.outputs.mttr_hours }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Calculate DORA metrics (from pushes & incidents)
+      - name: Calculate DORA metrics
         id: dora
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
             const mainBranch = process.env.MAIN_BRANCH || 'main';
-            const incidentLabel = process.env.INCIDENT_LABEL || 'incident';
-            const days = parseInt(process.env.WINDOW_DAYS || '30', 10);
+            const windowDays = Number(process.env.WINDOW_DAYS || '30');
+            const ciWorkflow = process.env.CI_WORKFLOW || 'ci.yml';
+            const securityWorkflow = process.env.SECURITY_WORKFLOW || 'security.yml';
+
+            const { owner, repo } = context.repo;
+            const core = require('@actions/core');
 
             const now = new Date();
-            const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-            const sinceIso = since.toISOString();
+            const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
             core.info(`Calculating DORA metrics for ${owner}/${repo}`);
-            core.info(`Branch: ${mainBranch}, Incident label: ${incidentLabel}, Window: last ${days} days`);
+            core.info(`Main branch: ${mainBranch}`);
+            core.info(`Window: last ${windowDays} days (since ${since.toISOString()})`);
 
-            // ---------- 1) Deployment frequency (pushes to main) ----------
-            let page = 1;
-            let pushes = [];
-            while (true) {
-              const res = await github.rest.repos.listCommits({
-                owner,
-                repo,
-                sha: mainBranch,
-                since: sinceIso,
-                per_page: 100,
-                page
-              });
-              if (res.data.length === 0) break;
-              pushes = pushes.concat(res.data);
-              if (res.data.length < 100 || page >= 10) break; // safety limit
-              page++;
-            }
-            const pushCount = pushes.length;
-            const deploysPerWeek = days > 0 ? (pushCount / (days / 7)) : 0;
-
-            // ---------- 2) Lead Time for Changes (PR created -> merged) ----------
-            page = 1;
-            let prs = [];
-            while (true) {
-              const res = await github.rest.pulls.list({
+            // ---------- Helper functions ----------
+            async function getMergedPrsInWindow() {
+              const prs = await github.paginate(github.rest.pulls.list, {
                 owner,
                 repo,
                 state: 'closed',
@@ -77,131 +55,203 @@ jobs:
                 sort: 'updated',
                 direction: 'desc',
                 per_page: 100,
-                page
               });
-              if (res.data.length === 0) break;
 
-              // Keep only PRs that were merged in our window
-              const mergedInWindow = res.data.filter(pr =>
-                pr.merged_at && new Date(pr.merged_at) >= since
-              );
-              prs = prs.concat(mergedInWindow);
+              const mergedInWindow = prs.filter(pr => {
+                if (!pr.merged_at) return false;
+                const mergedAt = new Date(pr.merged_at);
+                return mergedAt >= since;
+              });
 
-              // Stop early if the oldest item on this page is older than our window
-              const oldest = res.data[res.data.length - 1];
-              if (!oldest || new Date(oldest.updated_at) < since || page >= 10) break;
-              page++;
+              core.info(`Found ${mergedInWindow.length} PRs merged into ${mainBranch} in window`);
+              return mergedInWindow;
             }
 
-            let leadTimesHours = [];
-            for (const pr of prs) {
+            async function getWorkflowRunsInWindow(workflowFile) {
+              const allRuns = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                {
+                  owner,
+                  repo,
+                  workflow_id: workflowFile,
+                  per_page: 100,
+                  branch: mainBranch,
+                }
+              );
+
+              const filtered = allRuns.filter(run => {
+                const createdAt = new Date(run.created_at);
+                return createdAt >= since;
+              });
+
+              core.info(
+                `Workflow ${workflowFile}: ${filtered.length} runs on ${mainBranch} in window`
+              );
+              return filtered;
+            }
+
+            function average(arr) {
+              if (!arr.length) return 0;
+              return arr.reduce((a, b) => a + b, 0) / arr.length;
+            }
+
+            function median(arr) {
+              if (!arr.length) return 0;
+              const sorted = [...arr].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              if (sorted.length % 2 === 0) {
+                return (sorted[mid - 1] + sorted[mid]) / 2;
+              }
+              return sorted[mid];
+            }
+
+            function groupFinalRunBySha(runs) {
+              // Final (latest) run per head_sha
+              const map = new Map();
+              const sorted = [...runs].sort(
+                (a, b) => new Date(a.created_at) - new Date(b.created_at)
+              );
+              for (const run of sorted) {
+                if (run.head_branch !== mainBranch) continue;
+                map.set(run.head_sha, run); // later runs overwrite earlier ones
+              }
+              return map;
+            }
+
+            function computeMttrHours(runs) {
+              const relevant = runs.filter(r => r.head_branch === mainBranch);
+              if (!relevant.length) return 0;
+
+              const sorted = [...relevant].sort(
+                (a, b) => new Date(a.created_at) - new Date(b.created_at)
+              );
+
+              const failureStates = new Set(['failure', 'cancelled', 'timed_out']);
+              const successStates = new Set(['success']);
+
+              const episodes = [];
+              let failureStart = null;
+
+              for (const run of sorted) {
+                const t = new Date(run.created_at);
+                const conclusion = run.conclusion;
+
+                if (failureStates.has(conclusion)) {
+                  if (!failureStart) {
+                    failureStart = t;
+                  }
+                } else if (successStates.has(conclusion)) {
+                  if (failureStart) {
+                    const deltaMs = t - failureStart;
+                    if (deltaMs > 0) {
+                      episodes.push(deltaMs);
+                    }
+                    failureStart = null;
+                  }
+                }
+              }
+
+              if (!episodes.length) return 0;
+              const avgMs = average(episodes);
+              return avgMs / (1000 * 60 * 60); // hours
+            }
+
+            // ---------- 1) Deployment Frequency + Lead Time ----------
+            const mergedPrs = await getMergedPrsInWindow();
+            const deploymentCount = mergedPrs.length;
+
+            const leadTimesHours = mergedPrs.map(pr => {
               const created = new Date(pr.created_at);
               const merged = new Date(pr.merged_at);
-              const hours = (merged - created) / (1000 * 60 * 60);
-              if (hours >= 0) leadTimesHours.push(hours);
-            }
-            const avgLeadTimeHours = leadTimesHours.length
-              ? leadTimesHours.reduce((a, b) => a + b, 0) / leadTimesHours.length
-              : 0;
+              const deltaMs = merged - created;
+              return deltaMs / (1000 * 60 * 60); // hours
+            });
 
-            // ---------- 3) Incidents (issues with INCIDENT_LABEL) ----------
-            page = 1;
-            let incidents = [];
-            while (true) {
-              const res = await github.rest.issues.listForRepo({
-                owner,
-                repo,
-                state: 'all',
-                labels: incidentLabel,
-                since: sinceIso,
-                per_page: 100,
-                page
-              });
-              if (res.data.length === 0) break;
-              incidents = incidents.concat(res.data);
-              if (res.data.length < 100 || page >= 10) break;
-              page++;
-            }
-            const incidentCount = incidents.length;
+            const leadTimeAvg = average(leadTimesHours);
+            const leadTimeMedian = median(leadTimesHours);
 
-            // Change Failure Rate = incidents / deployments in period
-            const changeFailureRate = pushCount > 0
-              ? (incidentCount / pushCount) * 100
-              : 0;
+            core.info(`Deployment frequency (PR merges): ${deploymentCount}`);
+            core.info(`Lead time - avg (hours): ${leadTimeAvg.toFixed(2)}`);
+            core.info(`Lead time - median (hours): ${leadTimeMedian.toFixed(2)}`);
 
-            // ---------- 4) MTTR (Mean Time to Recovery) ----------
-            // Approximation: average time from incident open -> close
-            let mttrHoursList = [];
-            for (const issue of incidents) {
-              if (issue.closed_at) {
-                const opened = new Date(issue.created_at);
-                const closed = new Date(issue.closed_at);
-                const hours = (closed - opened) / (1000 * 60 * 60);
-                if (hours >= 0) mttrHoursList.push(hours);
+            // ---------- 2) Change Failure Rate ----------
+            const ciRuns = await getWorkflowRunsInWindow(ciWorkflow);
+            const secRuns = await getWorkflowRunsInWindow(securityWorkflow);
+
+            const ciBySha = groupFinalRunBySha(ciRuns);
+            const secBySha = groupFinalRunBySha(secRuns);
+
+            let deploymentsWithBuilds = 0;
+            let failedDeployments = 0;
+            const failureStates = new Set(['failure', 'cancelled', 'timed_out']);
+
+            for (const pr of mergedPrs) {
+              const sha = pr.merge_commit_sha;
+              if (!sha) continue;
+
+              const runsForDeployment = [];
+              const ciRun = ciBySha.get(sha);
+              const secRun = secBySha.get(sha);
+              if (ciRun) runsForDeployment.push(ciRun);
+              if (secRun) runsForDeployment.push(secRun);
+
+              if (!runsForDeployment.length) {
+                // No builds found for this deployment in window — skip from denominator
+                continue;
+              }
+
+              deploymentsWithBuilds++;
+
+              const hasFailure = runsForDeployment.some(run =>
+                failureStates.has(run.conclusion)
+              );
+
+              if (hasFailure) {
+                failedDeployments++;
               }
             }
-            const mttrHours = mttrHoursList.length
-              ? mttrHoursList.reduce((a, b) => a + b, 0) / mttrHoursList.length
-              : 0;
 
-            core.info(`Deployments (pushes to ${mainBranch}): ${pushCount}`);
-            core.info(`Incidents (label="${incidentLabel}"): ${incidentCount}`);
-            core.info(`Deployment frequency (per week): ${deploysPerWeek.toFixed(2)}`);
-            core.info(`Lead time (hours): ${avgLeadTimeHours.toFixed(2)}`);
-            core.info(`Change failure rate (%): ${changeFailureRate.toFixed(2)}`);
-            core.info(`MTTR (hours): ${mttrHours.toFixed(2)}`);
+            const changeFailureRate =
+              deploymentsWithBuilds === 0
+                ? 0
+                : failedDeployments / deploymentsWithBuilds;
 
-            core.setOutput('deployment_frequency', deploysPerWeek.toFixed(2));
-            core.setOutput('lead_time_hours', avgLeadTimeHours.toFixed(2));
-            core.setOutput('change_failure_rate', changeFailureRate.toFixed(2));
-            core.setOutput('mttr_hours', mttrHours.toFixed(2));
-            core.setOutput('window_days', days.toString());
-            core.setOutput('push_count', pushCount.toString());
-            core.setOutput('incident_count', incidentCount.toString());
+            core.info(
+              `Deployments with builds in window: ${deploymentsWithBuilds}, failed deployments: ${failedDeployments}`
+            );
+            core.info(
+              `Change Failure Rate: ${(changeFailureRate * 100).toFixed(2)}%`
+            );
 
-      - name: Add DORA metrics graph to workflow summary
-        env:
-          DEPLOY_FREQ: ${{ steps.dora.outputs.deployment_frequency }}
-          LEAD_HOURS: ${{ steps.dora.outputs.lead_time_hours }}
-          CFR: ${{ steps.dora.outputs.change_failure_rate }}
-          MTTR: ${{ steps.dora.outputs.mttr_hours }}
-          WINDOW_DAYS: ${{ steps.dora.outputs.window_days }}
-          PUSHES: ${{ steps.dora.outputs.push_count }}
-          INCIDENTS: ${{ steps.dora.outputs.incident_count }}
-          MAIN_BRANCH: ${{ env.MAIN_BRANCH }}
-          INCIDENT_LABEL: ${{ env.INCIDENT_LABEL }}
+            // ---------- 3) Mean Time To Recovery ----------
+            const mttrCi = computeMttrHours(ciRuns);
+            const mttrSec = computeMttrHours(secRuns);
+
+            let mttrCombined = 0;
+            if (mttrCi && mttrSec) {
+              mttrCombined = (mttrCi + mttrSec) / 2;
+            } else if (mttrCi) {
+              mttrCombined = mttrCi;
+            } else if (mttrSec) {
+              mttrCombined = mttrSec;
+            }
+
+            core.info(`MTTR (CI workflow) hours: ${mttrCi.toFixed(2)}`);
+            core.info(`MTTR (Security workflow) hours: ${mttrSec.toFixed(2)}`);
+            core.info(`MTTR (combined) hours: ${mttrCombined.toFixed(2)}`);
+
+            // ---------- Set outputs ----------
+            core.setOutput('deployment_frequency', deploymentCount.toString());
+            core.setOutput('lead_time_hours_avg', leadTimeAvg.toFixed(2));
+            core.setOutput('lead_time_hours_median', leadTimeMedian.toFixed(2));
+            core.setOutput('change_failure_rate', changeFailureRate.toFixed(4)); // 0-1
+            core.setOutput('mttr_hours', mttrCombined.toFixed(2));
+
+      - name: Print metrics summary
         run: |
-          cat << EOF >> "$GITHUB_STEP_SUMMARY"
-          ## DORA metrics (last ${WINDOW_DAYS} days)
-
-          **Assumptions**
-
-          - Each push to \`${MAIN_BRANCH}\` is treated as a deployment.
-          - Issues labeled \`${INCIDENT_LABEL}\` represent production failures/incidents.
-
-          ```mermaid
-          pie showData
-            title Throughput (relative)
-            "Deployment frequency (deploys/week)" : ${DEPLOY_FREQ:-0}
-            "Lead time (hours)" : ${LEAD_HOURS:-0}
-          ```
-
-          ```mermaid
-          pie showData
-            title Stability (relative)
-            "Change failure rate (%)" : ${CFR:-0}
-            "MTTR (hours)" : ${MTTR:-0}
-          ```
-
-          | Metric | Value |
-          | ------ | ----- |
-          | Deployment Frequency (deploys/week) | ${DEPLOY_FREQ} |
-          | Lead Time for Changes (hours, PR created → merged) | ${LEAD_HOURS} |
-          | Change Failure Rate (% of deployments with incident) | ${CFR} |
-          | Mean Time to Recovery (hours per incident) | ${MTTR} |
-
-          | Raw Counts (last ${WINDOW_DAYS} days) |  |
-          | ------------------------------------ | -- |
-          | Deployments (pushes to \`${MAIN_BRANCH}\`) | ${PUSHES} |
-          | Incidents (\`${INCIDENT_LABEL}\` issues)   | ${INCIDENTS} |
-          EOF
+          echo "DORA metrics for last $WINDOW_DAYS days (branch: $MAIN_BRANCH)"
+          echo "Deployment Frequency (PR merges): ${{ steps.dora.outputs.deployment_frequency }}"
+          echo "Lead Time for Changes (avg hours): ${{ steps.dora.outputs.lead_time_hours_avg }}"
+          echo "Lead Time for Changes (median hours): ${{ steps.dora.outputs.lead_time_hours_median }}"
+          echo "Change Failure Rate: ${{ steps.dora.outputs.change_failure_rate }} (0-1 scale)"
+          echo "Mean Time To Recovery (hours): ${{ steps.dora.outputs.mttr_hours }}"
