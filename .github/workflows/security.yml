@@ -120,9 +120,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Gitleaks scan (Customer)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source=src/Customer --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+        run: |
+          # Install gitleaks CLI and run the exact command you want
+          curl -sL https://github.com/zricethezav/gitleaks/releases/latest/download/gitleaks_amd64.deb -o /tmp/gitleaks.deb
+          sudo dpkg -i /tmp/gitleaks.deb
+          gitleaks detect --source=src/Customer --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
 
       - name: Trivy FS scan (Customer, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
@@ -149,9 +151,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Gitleaks scan (Order & Delivery)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source=src/OrderAndDelivery --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+        run: |
+          # Install gitleaks CLI and run the exact command you want
+          curl -sL https://github.com/zricethezav/gitleaks/releases/latest/download/gitleaks_amd64.deb -o /tmp/gitleaks.deb
+          sudo dpkg -i /tmp/gitleaks.deb
+          gitleaks detect --source=src/OrderAndDelivery --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
 
       - name: Trivy FS scan (Order & Delivery, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
