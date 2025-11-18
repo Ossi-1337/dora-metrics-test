@@ -110,7 +110,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-  security_customer:
+    security_customer:
     name: Customer – security gates
     needs: detect_changes
     if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
@@ -118,13 +118,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Gitleaks scan (Customer)
         uses: gitleaks/gitleaks-action@v2
-        with:
-          # Make the artifact name unique per workflow run to avoid 409 conflicts
-          artifact_name: gitleaks-customer-${{ github.run_id }}-${{ github.run_attempt }}
-          args: detect --source=src/Customer --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: explicitly point to your config; otherwise it will auto-detect .gitleaks.toml
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # Disable SARIF artifact upload to avoid 409 conflicts
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+          # Optional: disable summary if you don't care about it
+          # GITLEAKS_ENABLE_SUMMARY: false
 
       - name: Trivy FS scan (Customer, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
@@ -149,13 +155,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Gitleaks scan (Order & Delivery)
         uses: gitleaks/gitleaks-action@v2
-        with:
-          # Make the artifact name unique per workflow run to avoid 409 conflicts
-          artifact_name: gitleaks-order-${{ github.run_id }}-${{ github.run_attempt }}
-          args: detect --source=src/OrderAndDelivery --config=.gitleaks.toml --no-banner --redact --verbose --exit-code 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
 
       - name: Trivy FS scan (Order & Delivery, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
