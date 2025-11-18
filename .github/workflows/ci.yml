@@ -113,7 +113,8 @@ jobs:
         run: dotnet test tests/OrderAndDelivery.Tests/OrderAndDelivery.Tests.csproj -c Release --no-build
 
       - name: Build Docker image
+      #https://github.com/Ossi-1337/dora-metrics-test/actions/runs/19479361742/job/55747261703
         run: |
           docker build \
-            -t ghcr.io/Ossi-1337/mtogo-order-and-delivery:${{ github.sha }} \
+            -t ghcr.io/ossi-1337/mtogo-order-and-delivery:${{ github.sha }} \
             src/OrderAndDelivery
