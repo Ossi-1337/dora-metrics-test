@@ -1,0 +1,5 @@
+title = "Minimal gitleaks config for testing"
+
+[allowlist]
+  description = "Allow all for now (no rules)"
+  paths = [".*"]

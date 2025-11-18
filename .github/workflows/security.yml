@@ -89,13 +89,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: csharp
+          build-mode: manual
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - name: Build for CodeQL
+        run: |
+          dotnet restore src/Customer/Customer.Api.csproj
+          dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
+          dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
+          dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -127,6 +137,7 @@ jobs:
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-customer-fs.sarif
+        continue-on-error: true
 
   security_order:
     name: Order & Delivery – security gates
@@ -155,3 +166,4 @@ jobs:
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-order-fs.sarif
+        continue-on-error: true
