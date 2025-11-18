@@ -86,8 +86,9 @@ jobs:
 
       - name: Build Docker image
         run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           docker build \
-            -t ghcr.io/Ossi-1337/mtogo-customer:${{ github.sha }} \
+            -t ghcr.io/${OWNER}/mtogo-customer:${{ github.sha }} \
             src/Customer
 
   order_ci:
@@ -115,6 +116,7 @@ jobs:
       - name: Build Docker image
       #https://github.com/Ossi-1337/dora-metrics-test/actions/runs/19479361742/job/55747261703
         run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           docker build \
-            -t ghcr.io/ossi-1337/mtogo-order-and-delivery:${{ github.sha }} \
+            -t ghcr.io/${OWNER}/mtogo-order-and-delivery:${{ github.sha }} \
             src/OrderAndDelivery
