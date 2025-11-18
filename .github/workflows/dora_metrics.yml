@@ -1,10 +1,10 @@
-name: DORA Metrics
+name: DORA Metrics (pushes to main)
 
 on:
-  # Run every night at 00:30 UTC (adjust cron as needed)
+  # Run every night at 00:30 UTC (adjust as you like)
   schedule:
-    - cron: '30 0 * * *'
-  # Optional: allow manual runs from the Actions tab
+    - cron: "30 0 * * *"
+  # Allow manual runs from Actions tab
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,12 @@ jobs:
     name: Calculate DORA metrics
     runs-on: ubuntu-latest
 
-    # Minimal permissions to read repo contents and issues
+    # Config you can tweak
+    env:
+      MAIN_BRANCH: main        # change to "master" etc if needed
+      INCIDENT_LABEL: incident # label used for prod incidents
+      WINDOW_DAYS: "30"        # lookback window for metrics
+
     permissions:
       contents: read
       issues: read
@@ -21,47 +26,182 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Calculate DORA metrics from GitHub issues and releases
+      - name: Calculate DORA metrics (from pushes & incidents)
         id: dora
-        uses: stenjo/devops-metrics-action@v1
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # Optional extra config:
-          # owner: ${{ github.repository_owner }}
-          # repo:  ${{ github.event.repository.name }}
-          # logging: 'true'
-          # filtered: 'true'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const mainBranch = process.env.MAIN_BRANCH || 'main';
+            const incidentLabel = process.env.INCIDENT_LABEL || 'incident';
+            const days = parseInt(process.env.WINDOW_DAYS || '30', 10);
 
-      - name: Log DORA metrics to workflow log
-        run: |
-          echo "Deployment Frequency (releases/week): ${{ steps.dora.outputs.deploy-frequency }}"
-          echo "Lead Time for Changes (days):        ${{ steps.dora.outputs.lead-time }}"
-          echo "Change Failure Rate (%):             ${{ steps.dora.outputs.change-failure-rate }}"
-          echo "Mean Time to Recovery (hours):       ${{ steps.dora.outputs.mttr }}"
+            const now = new Date();
+            const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+            const sinceIso = since.toISOString();
+
+            core.info(`Calculating DORA metrics for ${owner}/${repo}`);
+            core.info(`Branch: ${mainBranch}, Incident label: ${incidentLabel}, Window: last ${days} days`);
+
+            // ---------- 1) Deployment frequency (pushes to main) ----------
+            let page = 1;
+            let pushes = [];
+            while (true) {
+              const res = await github.rest.repos.listCommits({
+                owner,
+                repo,
+                sha: mainBranch,
+                since: sinceIso,
+                per_page: 100,
+                page
+              });
+              if (res.data.length === 0) break;
+              pushes = pushes.concat(res.data);
+              if (res.data.length < 100 || page >= 10) break; // safety limit
+              page++;
+            }
+            const pushCount = pushes.length;
+            const deploysPerWeek = days > 0 ? (pushCount / (days / 7)) : 0;
+
+            // ---------- 2) Lead Time for Changes (PR created -> merged) ----------
+            page = 1;
+            let prs = [];
+            while (true) {
+              const res = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'closed',
+                base: mainBranch,
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100,
+                page
+              });
+              if (res.data.length === 0) break;
+
+              // Keep only PRs that were merged in our window
+              const mergedInWindow = res.data.filter(pr =>
+                pr.merged_at && new Date(pr.merged_at) >= since
+              );
+              prs = prs.concat(mergedInWindow);
+
+              // Stop early if the oldest item on this page is older than our window
+              const oldest = res.data[res.data.length - 1];
+              if (!oldest || new Date(oldest.updated_at) < since || page >= 10) break;
+              page++;
+            }
+
+            let leadTimesHours = [];
+            for (const pr of prs) {
+              const created = new Date(pr.created_at);
+              const merged = new Date(pr.merged_at);
+              const hours = (merged - created) / (1000 * 60 * 60);
+              if (hours >= 0) leadTimesHours.push(hours);
+            }
+            const avgLeadTimeHours = leadTimesHours.length
+              ? leadTimesHours.reduce((a, b) => a + b, 0) / leadTimesHours.length
+              : 0;
+
+            // ---------- 3) Incidents (issues with INCIDENT_LABEL) ----------
+            page = 1;
+            let incidents = [];
+            while (true) {
+              const res = await github.rest.issues.listForRepo({
+                owner,
+                repo,
+                state: 'all',
+                labels: incidentLabel,
+                since: sinceIso,
+                per_page: 100,
+                page
+              });
+              if (res.data.length === 0) break;
+              incidents = incidents.concat(res.data);
+              if (res.data.length < 100 || page >= 10) break;
+              page++;
+            }
+            const incidentCount = incidents.length;
+
+            // Change Failure Rate = incidents / deployments in period
+            const changeFailureRate = pushCount > 0
+              ? (incidentCount / pushCount) * 100
+              : 0;
+
+            // ---------- 4) MTTR (Mean Time to Recovery) ----------
+            // Approximation: average time from incident open -> close
+            let mttrHoursList = [];
+            for (const issue of incidents) {
+              if (issue.closed_at) {
+                const opened = new Date(issue.created_at);
+                const closed = new Date(issue.closed_at);
+                const hours = (closed - opened) / (1000 * 60 * 60);
+                if (hours >= 0) mttrHoursList.push(hours);
+              }
+            }
+            const mttrHours = mttrHoursList.length
+              ? mttrHoursList.reduce((a, b) => a + b, 0) / mttrHoursList.length
+              : 0;
+
+            core.info(`Deployments (pushes to ${mainBranch}): ${pushCount}`);
+            core.info(`Incidents (label="${incidentLabel}"): ${incidentCount}`);
+            core.info(`Deployment frequency (per week): ${deploysPerWeek.toFixed(2)}`);
+            core.info(`Lead time (hours): ${avgLeadTimeHours.toFixed(2)}`);
+            core.info(`Change failure rate (%): ${changeFailureRate.toFixed(2)}`);
+            core.info(`MTTR (hours): ${mttrHours.toFixed(2)}`);
+
+            core.setOutput('deployment_frequency', deploysPerWeek.toFixed(2));
+            core.setOutput('lead_time_hours', avgLeadTimeHours.toFixed(2));
+            core.setOutput('change_failure_rate', changeFailureRate.toFixed(2));
+            core.setOutput('mttr_hours', mttrHours.toFixed(2));
+            core.setOutput('window_days', days.toString());
+            core.setOutput('push_count', pushCount.toString());
+            core.setOutput('incident_count', incidentCount.toString());
 
       - name: Add DORA metrics graph to workflow summary
         env:
-          DEPLOY_FREQ: ${{ steps.dora.outputs.deploy-frequency }}
-          LEAD_TIME: ${{ steps.dora.outputs.lead-time }}
-          CFR: ${{ steps.dora.outputs.change-failure-rate }}
-          MTTR: ${{ steps.dora.outputs.mttr }}
+          DEPLOY_FREQ: ${{ steps.dora.outputs.deployment_frequency }}
+          LEAD_HOURS: ${{ steps.dora.outputs.lead_time_hours }}
+          CFR: ${{ steps.dora.outputs.change_failure_rate }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          WINDOW_DAYS: ${{ steps.dora.outputs.window_days }}
+          PUSHES: ${{ steps.dora.outputs.push_count }}
+          INCIDENTS: ${{ steps.dora.outputs.incident_count }}
+          MAIN_BRANCH: ${{ env.MAIN_BRANCH }}
+          INCIDENT_LABEL: ${{ env.INCIDENT_LABEL }}
         run: |
           cat << EOF >> "$GITHUB_STEP_SUMMARY"
-          ## DORA metrics (latest run)
+          ## DORA metrics (last ${WINDOW_DAYS} days)
+
+          **Assumptions**
+
+          - Each push to \`${MAIN_BRANCH}\` is treated as a deployment.
+          - Issues labeled \`${INCIDENT_LABEL}\` represent production failures/incidents.
 
           ```mermaid
           pie showData
-            title DORA metrics (relative comparison)
-            "Deployment Frequency" : ${DEPLOY_FREQ:-0}
-            "Lead Time for Changes" : ${LEAD_TIME:-0}
-            "Change Failure Rate" : ${CFR:-0}
-            "Mean Time to Recovery" : ${MTTR:-0}
+            title Throughput (relative)
+            "Deployment frequency (deploys/week)" : ${DEPLOY_FREQ:-0}
+            "Lead time (hours)" : ${LEAD_HOURS:-0}
+          ```
+
+          ```mermaid
+          pie showData
+            title Stability (relative)
+            "Change failure rate (%)" : ${CFR:-0}
+            "MTTR (hours)" : ${MTTR:-0}
           ```
 
           | Metric | Value |
           | ------ | ----- |
-          | Deployment Frequency (releases/week) | ${DEPLOY_FREQ} |
-          | Lead Time for Changes (days)         | ${LEAD_TIME}   |
-          | Change Failure Rate (%)              | ${CFR}         |
-          | Mean Time to Recovery (hours)        | ${MTTR}        |
+          | Deployment Frequency (deploys/week) | ${DEPLOY_FREQ} |
+          | Lead Time for Changes (hours, PR created → merged) | ${LEAD_HOURS} |
+          | Change Failure Rate (% of deployments with incident) | ${CFR} |
+          | Mean Time to Recovery (hours per incident) | ${MTTR} |
+
+          | Raw Counts (last ${WINDOW_DAYS} days) |  |
+          | ------------------------------------ | -- |
+          | Deployments (pushes to \`${MAIN_BRANCH}\`) | ${PUSHES} |
+          | Incidents (\`${INCIDENT_LABEL}\` issues)   | ${INCIDENTS} |
           EOF
