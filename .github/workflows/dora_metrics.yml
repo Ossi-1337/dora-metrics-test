@@ -1,0 +1,67 @@
+name: DORA Metrics
+
+on:
+  # Run every night at 00:30 UTC (adjust cron as needed)
+  schedule:
+    - cron: '30 0 * * *'
+  # Optional: allow manual runs from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  dora-metrics:
+    name: Calculate DORA metrics
+    runs-on: ubuntu-latest
+
+    # Minimal permissions to read repo contents and issues
+    permissions:
+      contents: read
+      issues: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Calculate DORA metrics from GitHub issues and releases
+        id: dora
+        uses: stenjo/devops-metrics-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Optional extra config:
+          # owner: ${{ github.repository_owner }}
+          # repo:  ${{ github.event.repository.name }}
+          # logging: 'true'
+          # filtered: 'true'
+
+      - name: Log DORA metrics to workflow log
+        run: |
+          echo "Deployment Frequency (releases/week): ${{ steps.dora.outputs.deploy-frequency }}"
+          echo "Lead Time for Changes (days):        ${{ steps.dora.outputs.lead-time }}"
+          echo "Change Failure Rate (%):             ${{ steps.dora.outputs.change-failure-rate }}"
+          echo "Mean Time to Recovery (hours):       ${{ steps.dora.outputs.mttr }}"
+
+      - name: Add DORA metrics graph to workflow summary
+        env:
+          DEPLOY_FREQ: ${{ steps.dora.outputs.deploy-frequency }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead-time }}
+          CFR: ${{ steps.dora.outputs.change-failure-rate }}
+          MTTR: ${{ steps.dora.outputs.mttr }}
+        run: |
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          ## DORA metrics (latest run)
+
+          ```mermaid
+          pie showData
+            title DORA metrics (relative comparison)
+            "Deployment Frequency" : ${DEPLOY_FREQ:-0}
+            "Lead Time for Changes" : ${LEAD_TIME:-0}
+            "Change Failure Rate" : ${CFR:-0}
+            "Mean Time to Recovery" : ${MTTR:-0}
+          ```
+
+          | Metric | Value |
+          | ------ | ----- |
+          | Deployment Frequency (releases/week) | ${DEPLOY_FREQ} |
+          | Lead Time for Changes (days)         | ${LEAD_TIME}   |
+          | Change Failure Rate (%)              | ${CFR}         |
+          | Mean Time to Recovery (hours)        | ${MTTR}        |
+          EOF
