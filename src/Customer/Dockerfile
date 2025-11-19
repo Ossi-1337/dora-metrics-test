@@ -1,26 +1,30 @@
-# Multi-stage Dockerfile for a .NET 8 ASP.NET service (Customer)
-# Build stage: restore and publish
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
-
-# Copy csproj(s) first to enable Docker layer caching for restores.
-COPY *.csproj ./
-
-# Restore the specific project
-RUN dotnet restore ./Customer.Api.csproj
-
-# Copy the rest of the source and publish
-COPY . .
-RUN dotnet publish ./Customer.Api.csproj -c Release -o /app/publish --no-restore
-
-# Runtime stage: lightweight ASP.NET image
+# Use a small runtime image for final container
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# Configure listening port and copy published output
-ENV ASPNETCORE_URLS=http://+:80
-EXPOSE 80
-COPY --from=build /app/publish .
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
 
-# Start the app (adjust DLL name if your assembly name differs)
+# Copy project files (preserve folder structure) so project-to-project references resolve
+# ...existing code...
+COPY Customer.Api/*.csproj Customer.Api/
+COPY Shared/*.csproj Shared/
+# If you have a solution file uncomment:
+# COPY *.sln ./
+
+# Restore only the projects (faster layer caching)
+RUN dotnet restore Customer.Api/Customer.Api.csproj
+
+# Copy the remaining source files
+COPY . .
+
+# Publish
+WORKDIR /src/Customer.Api
+RUN dotnet publish Customer.Api.csproj -c Release -o /app/publish --no-restore
+
+# Final stage: copy publish output
+FROM runtime AS final
+WORKDIR /app
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "Customer.Api.dll"]
