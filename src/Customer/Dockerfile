@@ -5,17 +5,21 @@ ARG DOTNET_VERSION=7.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
-# Copy everything and restore/build. If your .csproj is named differently,
-# replace "Customer.csproj" below with the actual project filename.
+# Copy all source files
 COPY . .
-RUN dotnet restore "Customer.csproj"
-RUN dotnet publish "Customer.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
+# Detect project file dynamically, restore and publish it
+RUN set -eux; \
+    proj=$(ls *.csproj 2>/dev/null | head -n 1); \
+    if [ -z "$proj" ]; then echo "No .csproj found in /src"; exit 1; fi; \
+    echo "Using project: $proj"; \
+    dotnet restore "$proj"; \
+    dotnet publish "$proj" -c Release -o /app/publish /p:UseAppHost=false
+
+# Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
-
-ENV ASPNETCORE_URLS=http://+:80
-EXPOSE 80
-
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "Customer.dll"]
+
+# Start the first DLL found in /app (avoids hardcoding the DLL name)
+ENTRYPOINT ["sh", "-c", "dotnet /app/$(ls /app | grep '\\.dll$' | head -n1)"]
