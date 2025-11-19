@@ -1,4 +1,4 @@
-name: Security & Quality Gates
+name: Security gates
 
 on:
   push:
@@ -29,20 +29,13 @@ permissions:
   checks: write
 
 jobs:
-  detect_changes:
+  detect_changed_services:
     name: Detect changed services
     runs-on: ubuntu-latest
-
     outputs:
       shared: ${{ steps.filter.outputs.shared }}
       customer: ${{ steps.filter.outputs.customer }}
       order: ${{ steps.filter.outputs.order }}
-      partner: ${{ steps.filter.outputs.partner }}
-      agent: ${{ steps.filter.outputs.agent }}
-      feedback: ${{ steps.filter.outputs.feedback }}
-      analytics: ${{ steps.filter.outputs.analytics }}
-      notification: ${{ steps.filter.outputs.notification }}
-      hub: ${{ steps.filter.outputs.hub }}
 
     steps:
       - name: Checkout
@@ -71,19 +64,13 @@ jobs:
 
   codeql:
     name: CodeQL – repo-wide analysis
-    needs: detect_changes
+    needs: detect_changed_services
     runs-on: ubuntu-latest
     if: >
       ${{
-        needs.detect_changes.outputs.shared == 'true' ||
-        needs.detect_changes.outputs.customer == 'true' ||
-        needs.detect_changes.outputs.order == 'true' ||
-        needs.detect_changes.outputs.partner == 'true' ||
-        needs.detect_changes.outputs.agent == 'true' ||
-        needs.detect_changes.outputs.feedback == 'true' ||
-        needs.detect_changes.outputs.analytics == 'true' ||
-        needs.detect_changes.outputs.notification == 'true' ||
-        needs.detect_changes.outputs.hub == 'true'
+        needs.detect_changed_services.outputs.shared == 'true' ||
+        needs.detect_changed_services.outputs.customer == 'true' ||
+        needs.detect_changed_services.outputs.order == 'true'
       }}
 
     steps:
@@ -112,8 +99,8 @@ jobs:
 
     security_customer:
     name: Customer – security gates
-    needs: detect_changes
-    if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    needs: detect_changed_services
+    if: ${{ needs.detect_changed_services.outputs.customer == 'true' || needs.detect_changed_services.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -125,12 +112,9 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: explicitly point to your config; otherwise it will auto-detect .gitleaks.toml
           GITLEAKS_CONFIG: .gitleaks.toml
-          # Disable SARIF artifact upload to avoid 409 conflicts
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
-          # Optional: disable summary if you don't care about it
-          # GITLEAKS_ENABLE_SUMMARY: false
+
 
       - name: Trivy FS scan (Customer, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
@@ -149,8 +133,8 @@ jobs:
 
   security_order:
     name: Order & Delivery – security gates
-    needs: detect_changes
-    if: ${{ needs.detect_changes.outputs.order == 'true' || needs.detect_changes.outputs.shared == 'true' }}
+    needs: detect_changed_services
+    if: ${{ needs.detect_changed_services.outputs.order == 'true' || needs.detect_changed_services.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
