@@ -6,12 +6,14 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy project files (preserve folder structure) so project-to-project references resolve
-# ...existing code...
-COPY Customer.Api/*.csproj Customer.Api/
-COPY Shared/*.csproj Shared/
-# If you have a solution file uncomment:
-# COPY *.sln ./
+# Replace wildcard copy with explicit JSON-style COPY so docker resolves paths reliably.
+# Ensure you run `docker build` from the repository root (the directory that contains Customer.Api/)
+# or adjust the source paths below to match your repo layout.
+COPY ["Customer.Api/Customer.Api.csproj", "Customer.Api/"]
+COPY ["Shared/Shared.csproj", "Shared/"]
+
+# If you have a solution file, you can copy it too:
+# COPY ["YourSolution.sln", "."]
 
 # Restore only the projects (faster layer caching)
 RUN dotnet restore Customer.Api/Customer.Api.csproj
