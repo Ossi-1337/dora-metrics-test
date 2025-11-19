@@ -1,23 +1,21 @@
-# Build args
-ARG DOTNET_VERSION=8.0
-
-FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# only copy neessary code because each folder is its own service, besides shared
-COPY Customer.Api/Customer.Api.csproj ./Customer.Api/
-COPY ../Shared ./Shared
-# Restore the specific project
-RUN dotnet restore ./Customer.Api/Customer.Api.csproj
-# Copy the rest of the source and publish
-COPY Customer.Api ./Customer.Api
-RUN dotnet publish ./Customer.Api/Customer.Api.csproj -c Release -o /app/publish --no-restore
-# Runtime stage: lightweight ASP.NET image
-FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
+# Copy only the project files first (Customer + Shared) so restore can be cached
+COPY ["src/Customer/Customer.Api.csproj", "Customer/"]
+COPY ["src/Shared/Shared.csproj", "Shared/"]
+
+RUN dotnet restore "Customer/Customer.Api.csproj"
+
+# Copy the rest of the sources
+COPY src/Customer/ Customer/
+COPY src/Shared/ Shared/
+
+WORKDIR /src/Customer
+RUN dotnet publish "Customer.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
-# Configure listening port
-ENV ASPNETCORE_URLS=http://+:80
 EXPOSE 80
-# Start the app (adjust DLL name if your assembly name differs)
 ENTRYPOINT ["dotnet", "Customer.Api.dll"]
