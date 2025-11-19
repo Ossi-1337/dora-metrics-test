@@ -97,7 +97,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-    security_customer:
+  security_customer:
     name: Customer – security gates
     needs: detect_changed_services
     if: ${{ needs.detect_changed_services.outputs.customer == 'true' || needs.detect_changed_services.outputs.shared == 'true' }}
@@ -114,7 +114,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
-
 
       - name: Trivy FS scan (Customer, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@0.24.0
