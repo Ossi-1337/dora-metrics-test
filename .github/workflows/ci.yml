@@ -84,7 +84,7 @@ jobs:
           docker build \
             -f src/Customer/Dockerfile \
             -t ghcr.io/${OWNER}/mtogo-customer:${{ github.sha }} \
-            src/Customer
+            src
 
   order_ci:
     name: Order & Delivery – build, test & docker

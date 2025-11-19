@@ -1,30 +1,27 @@
-# ---- Build stage ----
+# -------- Build stage --------
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy csproj files (for better restore-layer caching)
-COPY ["src/Customer/Customer.Api.csproj", "Customer/"]
-COPY ["src/Shared/Shared.csproj", "Shared/"]
+# Copy csproj files first (restore cache)
+COPY Shared/Shared.csproj Shared/
+COPY Customer/Customer.Api.csproj Customer/
 
-RUN dotnet restore "Customer/Customer.Api.csproj"
+RUN dotnet restore Customer/Customer.Api.csproj
 
 # Copy the rest of the source, including Shared
-COPY src/Customer/ Customer/
-COPY src/Shared/ Shared/
+COPY Shared/ Shared/
+COPY Customer/ Customer/
 
 WORKDIR /src/Customer
-RUN dotnet publish "Customer.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish Customer.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
-
-# ---- Runtime stage ----
+# -------- Runtime stage --------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 
-# Copy published output from build stage
 COPY --from=build /app/publish .
 
-# Expose the default ASP.NET Core ports used in containers
+# Expose whatever ports you actually use; 8080 is common for ASP.NET in containers
 EXPOSE 8080
-EXPOSE 8081
 
 ENTRYPOINT ["dotnet", "Customer.Api.dll"]
