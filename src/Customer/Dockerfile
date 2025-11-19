@@ -1,30 +1,33 @@
-# Build stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 8081
+
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution-wide files (optional but nice for restore)
-COPY Mtogo.sln ./
-COPY Directory.Build.props ./
-COPY global.json ./
+# Copy solution and project files
+COPY ["Directory.Build.props", "."]
+COPY ["global.json", "."]
+COPY ["Mtogo.sln", "."]
+COPY ["src/Customer/Customer.Api.csproj", "src/Customer/"]
+COPY ["src/Shared/Shared.csproj", "src/Shared/"]
 
-# Copy shared project and service project
-# NOTE: these paths are relative to the build context root
-COPY src/Shared/ ./Shared/
-COPY src/Customer/ ./Customer/
+# Restore dependencies
+RUN dotnet restore "src/Customer/Customer.Api.csproj"
 
-# Restore
-WORKDIR /src/Customer
-RUN dotnet restore Customer.Api.csproj
+# Copy source files
+COPY ["src/Customer/", "src/Customer/"]
+COPY ["src/Shared/", "src/Shared/"]
 
 # Build
-RUN dotnet publish Customer.Api.csproj -c Release -o /app/publish --no-restore
+WORKDIR "/src/src/Customer"
+RUN dotnet build "Customer.Api.csproj" -c Release -o /app/build
 
-# Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM build AS publish
+RUN dotnet publish "Customer.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM base AS final
 WORKDIR /app
-COPY --from=build /app/publish ./
-
-# ASP.NET Core defaults to port 8080 in container scenarios, but expose 8080 explicitly
-EXPOSE 8080
-
+COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "Customer.Api.dll"]
