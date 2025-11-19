@@ -8,12 +8,24 @@ WORKDIR /src
 # Copy all source files (ensure Shared projects/folders are present in the build context)
 COPY . .
 
-# replace "Customer.csproj" below with the actual project filename if you prefer hardcoding
-# Detect project file dynamically, restore and publish it
+# Detect solution or project, cd into project dir (so relative ProjectReference paths resolve),
+# then restore and publish to /app/publish
 RUN set -eux; \
-    proj=$(ls *.csproj 2>/dev/null | head -n 1); \
-    if [ -z "$proj" ]; then echo "No .csproj found in /src"; exit 1; fi; \
-    echo "Using project: $proj"; \
+    sln=$(find . -maxdepth 4 -name "*.sln" -print -quit); \
+    if [ -n "$sln" ]; then \
+      echo "Using solution: $sln"; \
+      dotnet restore "$sln"; \
+      dotnet publish "$sln" -c Release -o /app/publish /p:UseAppHost=false; \
+      exit 0; \
+    fi; \
+    proj_path=$(find . -maxdepth 6 -name "*.csproj" -print -quit); \
+    if [ -z "$proj_path" ]; then \
+      echo "No .sln or .csproj found in /src"; exit 1; \
+    fi; \
+    echo "Using project: $proj_path"; \
+    proj=$(basename "$proj_path"); \
+    proj_dir=$(dirname "$proj_path"); \
+    cd "$proj_dir"; \
     dotnet restore "$proj"; \
     dotnet publish "$proj" -c Release -o /app/publish /p:UseAppHost=false
 
