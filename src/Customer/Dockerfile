@@ -1,7 +1,7 @@
 
 ARG DOTNET_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
-WORKDIR /src
+WORKDIR ../src
 
 # copy project files first (for layer caching)
 COPY ["Customer/Customer.csproj", "Customer/"]
