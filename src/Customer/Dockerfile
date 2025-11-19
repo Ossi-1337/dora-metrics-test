@@ -1,22 +1,18 @@
 ARG DOTNET_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
+COPY ["src/Customer/Customer.Api.csproj", "Customer/"]
+COPY ["src/Shared/Shared.csproj", "Shared/"]
+RUN dotnet restore "Customer/Customer.Api.csproj"
 
-# Copy solution and csproj(s) first to maximize cache reuse
-COPY *.sln ./
-COPY Customer/*.csproj Customer/
+COPY src/Customer/. Customer/
+COPY src/Shared/. Shared/
 
-# If you use private NuGet feeds, copy nuget.config here:
-# COPY nuget.config ./
+WORKDIR /src/Customer
+RUN dotnet publish -c Release -o /app/publish --no-restore
 
-# Restore using the explicit csproj path (this is the step that failed previously)
-RUN dotnet restore "Customer/Customer.csproj"
-
-# Copy the rest of the source and publish (no-restore to use cached restore)
-COPY . .
-RUN dotnet publish "Customer/Customer.csproj" -c Release -o /app --no-restore
-
-FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS runtime
+ARG DOTNET_VERSION
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
-COPY --from=build /app .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "Customer.dll"]
