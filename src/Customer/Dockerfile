@@ -1,25 +1,21 @@
+# Build args
 ARG DOTNET_VERSION=8.0
-FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
-# Copy project files individually to leverage layer caching.
-# Ensure you run docker build from the repository root so 'src/...' paths exist in the build context.
-COPY src/Customer/Customer.csproj src/Customer/
-COPY src/Shared/Shared.csproj src/Shared/
+# Context is src/, so no leading "src/" here
+COPY ["Customer/Customer.Api.csproj", "Customer/"]
+COPY ["Shared/Shared.csproj", "Shared/"]
 
-RUN dotnet restore src/Customer/Customer.csproj
+RUN dotnet restore "Customer/Customer.Api.csproj"
 
-# Copy all source code
-COPY src/. src/
+WORKDIR /src/Customer
+RUN dotnet build "Customer.Api.csproj" -c Release -o /app/build
+RUN dotnet publish "Customer.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-# Publish only the Customer project (Shared is included as referenced project)
-RUN dotnet publish src/Customer/Customer.csproj -c Release -o /app/publish
-
+ARG DOTNET_VERSION
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
-COPY --from=build /app/publish .
-
-# Adjust the DLL name if your project produces a different assembly name
-ENTRYPOINT ["dotnet", "Customer.dll"]
-
+COPY --from=build /app/publish ./
+ENTRYPOINT ["dotnet", "Customer.Api.dll"]
