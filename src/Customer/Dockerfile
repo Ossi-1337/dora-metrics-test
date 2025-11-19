@@ -1,17 +1,13 @@
 
 ARG DOTNET_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
-WORKDIR ../src
+WORKDIR /src
 
-# copy project files first (for layer caching)
-COPY ["Customer/Customer.csproj", "Customer/"]
-COPY ["Shared/Shared.csproj", "Shared/"]
+# copy the entire source so all project files (including Shared) are available
+COPY . .
 
 # restore dependencies
 RUN dotnet restore "Customer/Customer.csproj"
-
-# copy the rest of the source
-COPY . .
 
 WORKDIR /src/Customer
 
