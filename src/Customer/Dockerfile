@@ -1,13 +1,14 @@
 # Dockerfile for the Customer project (multi-stage .NET build)
 # Adjust DOTNET_VERSION or project file name if needed.
 
-ARG DOTNET_VERSION=7.0
+ARG DOTNET_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
-# Copy all source files
+# Copy all source files (ensure Shared projects/folders are present in the build context)
 COPY . .
 
+# replace "Customer.csproj" below with the actual project filename if you prefer hardcoding
 # Detect project file dynamically, restore and publish it
 RUN set -eux; \
     proj=$(ls *.csproj 2>/dev/null | head -n 1); \
@@ -16,7 +17,7 @@ RUN set -eux; \
     dotnet restore "$proj"; \
     dotnet publish "$proj" -c Release -o /app/publish /p:UseAppHost=false
 
-# Runtime image
+# Runtime image must match major runtime (use .NET 8 ASP.NET runtime)
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
