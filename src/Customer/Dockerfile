@@ -1,32 +1,21 @@
-# Use a small runtime image for final container
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
-WORKDIR /app
+# Dockerfile for the Customer project (multi-stage .NET build)
+# Adjust DOTNET_VERSION or project file name if needed.
 
-# Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG DOTNET_VERSION=7.0
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
-# Replace wildcard copy with explicit JSON-style COPY so docker resolves paths reliably.
-# Ensure you run `docker build` from the repository root (the directory that contains Customer.Api/)
-# or adjust the source paths below to match your repo layout.
-COPY ["Customer.Api/Customer.Api.csproj", "Customer"]
-COPY ["Shared/Shared.csproj", "Shared/"]
-
-# If you have a solution file, you can copy it too:
-# COPY ["YourSolution.sln", "."]
-
-# Restore only the projects (faster layer caching)
-RUN dotnet restore Customer/Customer.Api.csproj
-
-# Copy the remaining source files
+# Copy everything and restore/build. If your .csproj is named differently,
+# replace "Customer.csproj" below with the actual project filename.
 COPY . .
+RUN dotnet restore "Customer.csproj"
+RUN dotnet publish "Customer.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-# Publish
-WORKDIR /src/Customer
-RUN dotnet publish Customer.Api.csproj -c Release -o /app/publish --no-restore
-
-# Final stage: copy publish output
-FROM runtime AS final
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
+
+ENV ASPNETCORE_URLS=http://+:80
+EXPOSE 80
+
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "Customer.Api.dll"]
+ENTRYPOINT ["dotnet", "Customer.dll"]
