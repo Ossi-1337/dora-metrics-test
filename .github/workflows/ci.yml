@@ -114,4 +114,4 @@ jobs:
           docker build \
             -f src/OrderAndDelivery/Dockerfile \
             -t ghcr.io/${OWNER}/mtogo-order-and-delivery:${{ github.sha }} \
-            src/OrderAndDelivery
+            src
