@@ -5,8 +5,6 @@ COPY ["src/Customer/Customer.Api.csproj", "Customer/"]
 COPY ["src/Shared/Shared.csproj", "Shared/"]
 RUN dotnet restore "Customer/Customer.Api.csproj"
 
-COPY src/ ./src/
-
 WORKDIR /src/Customer
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
