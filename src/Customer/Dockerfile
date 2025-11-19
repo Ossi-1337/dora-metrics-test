@@ -8,11 +8,12 @@ COPY Directory.Build.props ./
 COPY global.json ./
 
 # Copy shared project and service project
-COPY src/Shared/ src/Shared/
-COPY src/Customer/ src/Customer/
+# NOTE: these paths are relative to the build context root
+COPY src/Shared/ ./Shared/
+COPY src/Customer/ ./Customer/
 
 # Restore
-WORKDIR /src/src/Customer
+WORKDIR /src/Customer
 RUN dotnet restore Customer.Api.csproj
 
 # Build
