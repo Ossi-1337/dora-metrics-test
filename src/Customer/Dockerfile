@@ -1,19 +1,29 @@
-# Multi-stage Dockerfile for Customer including Shared project
+# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy entire repository into the build container to ensure src/Shared is always present
-# This avoids "not found" errors for COPY when build context is partial or .dockerignore excludes paths
-COPY . .
+# Copy solution-wide files (optional but nice for restore)
+COPY Mtogo.sln ./
+COPY Directory.Build.props ./
+COPY global.json ./
 
-# Restore using the Customer project (path is relative to the copied repository)
-RUN dotnet restore "src/Customer/Customer.Api.csproj"
+# Copy shared project and service project
+COPY src/Shared/ src/Shared/
+COPY src/Customer/ src/Customer/
 
-# Publish Customer project
-RUN dotnet publish "src/Customer/Customer.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+# Restore
+WORKDIR /src/src/Customer
+RUN dotnet restore Customer.Api.csproj
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# Build
+RUN dotnet publish Customer.Api.csproj -c Release -o /app/publish --no-restore
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-COPY --from=build /app/publish .
-EXPOSE 80
+COPY --from=build /app/publish ./
+
+# ASP.NET Core defaults to port 8080 in container scenarios, but expose 8080 explicitly
+EXPOSE 8080
+
 ENTRYPOINT ["dotnet", "Customer.Api.dll"]
