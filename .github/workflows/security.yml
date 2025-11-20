@@ -36,9 +36,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Use the exact commit that triggered the CI workflow
           ref: ${{ github.event.workflow_run.head_sha }}
-          # Fetch full history so paths-filter can compare against previous commit
           fetch-depth: 0
 
       - name: Detect changed paths
@@ -70,6 +68,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -98,11 +99,6 @@ jobs:
             dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
           fi
 
-        # dotnet restore src/Customer/Customer.Api.csproj
-        # dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
-        # dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
-        # dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
-
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
 
@@ -115,6 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -144,7 +141,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
-          scan-ref: ghcr.io/${{ github.repository_owner }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-customer-image.sarif
           ignore-unfixed: true
@@ -169,6 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -177,7 +175,7 @@ jobs:
           curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz \
           | tar xz -C /usr/local/bin gitleaks
 
-      - name: Gitleaks scan (Customer)
+      - name: Gitleaks scan (Order & Delivery)
         run: |
           gitleaks detect \
             --source . \
@@ -198,7 +196,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
-          scan-ref: ghcr.io/${{ github.repository_owner }}/mtogo-order-and-delivery:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/mtogo-order-and-delivery:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-order-image.sarif
           ignore-unfixed: true
