@@ -3,7 +3,12 @@ name: Security gates
 on:
   workflow_run:
     workflows: ["CI"]  
-    types: ["completed"]  
+    types: ["completed"]
+
+permissions:
+  contents: read          
+  actions: read         
+  security-events: write
 
 jobs:
   # Check if CI succeeded
