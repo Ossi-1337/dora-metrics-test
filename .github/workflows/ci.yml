@@ -2,14 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.sln'
-      - 'Directory.Build.props'
-      - 'global.json'
-      - '.github/workflows/**'
   pull_request:
     branches: [ main ]
     paths:
