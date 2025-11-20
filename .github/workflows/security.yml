@@ -76,7 +76,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: csharp
           build-mode: manual
@@ -89,7 +89,7 @@ jobs:
           dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
 
   security_customer:
     name: Customer – security gates
@@ -125,7 +125,7 @@ jobs:
           ignore-unfixed: true
           severity: HIGH,CRITICAL
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-customer-fs.sarif
         continue-on-error: true
@@ -164,7 +164,7 @@ jobs:
           ignore-unfixed: true
           severity: HIGH,CRITICAL
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-order-fs.sarif
         continue-on-error: true
