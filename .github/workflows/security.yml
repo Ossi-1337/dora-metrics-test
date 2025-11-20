@@ -10,7 +10,7 @@ permissions:
   contents: read          
   actions: read         
   security-events: write
-  packages: read # image scanning
+  packages: read
 
 jobs:
   # Check if CI succeeded
@@ -142,7 +142,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
-          image-ref: ghcr.io/${{ github.repository_owner | toLower }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/${{ toLower(github.repository_owner) }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-customer-image.sarif
           ignore-unfixed: true
