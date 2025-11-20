@@ -26,20 +26,28 @@ jobs:
   detect_changed_services:
     name: Detect changed services
     runs-on: ubuntu-latest
+    # NEW: only run if the CI workflow actually has a head commit SHA (i.e. not a workflow_dispatch or rerun)
+    if: github.event.workflow_run.head_sha != ''
     outputs:
       shared: ${{ steps.filter.outputs.shared }}
       customer: ${{ steps.filter.outputs.customer }}
       order: ${{ steps.filter.outputs.order }}
 
     steps:
-      - name: Checkout
+      - name: Checkout PR or push commit
         uses: actions/checkout@v4
+        with:
+          # For workflow_run, check out the same SHA that triggered CI
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Detect changed paths
         id: filter
         uses: dorny/paths-filter@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          base: ${{ github.event.workflow_run.pull_requests[0].base.sha || github.event.workflow_run.before }}
+          ref:  ${{ github.event.workflow_run.head_sha }}
           filters: |
             shared:
               - 'src/Shared/**'
@@ -69,6 +77,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -97,11 +107,6 @@ jobs:
             dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
           fi
 
-        # dotnet restore src/Customer/Customer.Api.csproj
-        # dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
-        # dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
-        # dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
-
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
 
@@ -114,6 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -153,6 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Install gitleaks
