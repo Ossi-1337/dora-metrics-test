@@ -1,34 +1,26 @@
 name: Security gates
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.sln'
-      - 'Directory.Build.props'
-      - 'global.json'
-      - '.github/workflows/**'
-      - '.gitleaks.toml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '*.sln'
-      - 'Directory.Build.props'
-      - 'global.json'
-      - '.github/workflows/**'
-      - '.gitleaks.toml'
-
-permissions:
-  contents: read
-  security-events: write
-  actions: read
-  checks: write
+  workflow_run:
+    workflows: ["CI"]  # Only run after CI completes
+    types: [completed]
+    branches: [main]
+  pull_request:  # Still run on PRs (in parallel with CI)
+    branches: [main]
 
 jobs:
+  # Check if CI succeeded
+  check_ci_status:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run'
+    steps:
+      - name: Check CI workflow result
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "CI workflow failed, stopping security scans"
+            exit 1
+          fi
+  
   detect_changed_services:
     name: Detect changed services
     runs-on: ubuntu-latest
