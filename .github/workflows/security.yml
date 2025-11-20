@@ -114,6 +114,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+      
+      - name: Set lowercase owner
+        run: echo "OWNER_LC=${OWNER,,}" >> "$GITHUB_ENV"
+        env:
+          OWNER: ${{ github.repository_owner }}
 
       - name: Install gitleaks
         run: |
@@ -142,7 +147,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
-          image-ref: ghcr.io/${{ toLower(github.repository_owner) }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/mtogo-customer:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-customer-image.sarif
           ignore-unfixed: true
@@ -169,6 +174,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+
+      - name: Set lowercase owner
+        run: echo "OWNER_LC=${OWNER,,}" >> "$GITHUB_ENV"
+        env:
+          OWNER: ${{ github.repository_owner }}
 
       - name: Install gitleaks
         run: |
@@ -197,7 +207,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: image
-          image-ref: ghcr.io/${{ github.repository_owner | toLower }}/mtogo-order-and-delivery:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/mtogo-order-and-delivery:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-order-image.sarif
           ignore-unfixed: true
