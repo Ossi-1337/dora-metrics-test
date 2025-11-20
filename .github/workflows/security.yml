@@ -65,13 +65,8 @@ jobs:
   codeql:
     name: CodeQL – repo-wide analysis
     needs: detect_changed_services
+    if: ${{ needs.detect_changed_services.outputs.customer == 'true' || needs.detect_changed_services.outputs.order == 'true' || needs.detect_changed_services.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
-    if: >
-      ${{
-        needs.detect_changed_services.outputs.shared == 'true' ||
-        needs.detect_changed_services.outputs.customer == 'true' ||
-        needs.detect_changed_services.outputs.order == 'true'
-      }}
 
     steps:
       - uses: actions/checkout@v4
