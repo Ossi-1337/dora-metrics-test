@@ -10,7 +10,7 @@ permissions:
   contents: read          
   actions: read         
   security-events: write
-  packages: read
+  packages: read # image scanning
 
 jobs:
   # Check if CI succeeded
