@@ -83,10 +83,24 @@ jobs:
 
       - name: Build for CodeQL
         run: |
-          dotnet restore src/Customer/Customer.Api.csproj
-          dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
-          dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
-          dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
+          if [[ "${{ needs.detect_changed_services.outputs.customer }}" == "true" || "${{ needs.detect_changed_services.outputs.shared }}" == "true" ]]; then
+            echo "Building Customer service for CodeQL"
+            
+            dotnet restore src/Customer/Customer.Api.csproj
+            dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
+          fi
+
+          if [[ "${{ needs.detect_changed_services.outputs.order }}" == "true" || "${{ needs.detect_changed_services.outputs.shared }}" == "true" ]]; then
+            echo "Building Order & Delivery service for CodeQL"
+
+            dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
+            dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
+          fi
+
+        # dotnet restore src/Customer/Customer.Api.csproj
+        # dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
+        # dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
+        # dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
