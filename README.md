@@ -1,3 +1,1 @@
 # dora-metrics-test
-
-test
