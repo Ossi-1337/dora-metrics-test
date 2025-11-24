@@ -60,92 +60,21 @@ jobs:
               - 'src/OrderAndDelivery/**'
               - 'tests/OrderAndDelivery.Tests/**'
 
-  customer_restore:
-    name: Customer – restore
-    needs: detect_changes
-    if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
-    runs-on: ubuntu-latest
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore Customer API
-        run: dotnet restore src/Customer/Customer.Api.csproj
-
-      - name: Restore Customer tests
-        run: dotnet restore tests/Customer.Tests/Customer.Tests.csproj
-
-      - name: Upload restored artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: customer-restore-obj
-          path: |
-            .nuget
-            src/Customer/obj
-            tests/Customer.Tests/obj
-          if-no-files-found: error
-          retention-days: 1
-
-  order_restore:
-    name: Order & Delivery – restore
-    needs: detect_changes
-    if: ${{ needs.detect_changes.outputs.order == 'true' || needs.detect_changes.outputs.shared == 'true' }}
-    runs-on: ubuntu-latest
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore Order API
-        run: dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
-
-      - name: Restore Order tests
-        run: dotnet restore tests/OrderAndDelivery.Tests/OrderAndDelivery.Tests.csproj
-
-      - name: Upload restored artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: order-restore-obj
-          path: |
-            .nuget
-            src/OrderAndDelivery/obj
-            tests/OrderAndDelivery.Tests/obj
-          if-no-files-found: error
-          retention-days: 1
-
   customer_ci:
     name: Customer – build, test & docker
-    needs:
-      - detect_changes
-      - customer_restore
+    needs: detect_changes
     if: ${{ needs.detect_changes.outputs.customer == 'true' || needs.detect_changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download restored artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: customer-restore-obj
-          path: .
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/Customer/Customer.Api.csproj
 
       - name: Build
         run: dotnet build src/Customer/Customer.Api.csproj -c Release --no-restore
@@ -174,26 +103,19 @@ jobs:
 
   order_ci:
     name: Order & Delivery – build, test & docker
-    needs:
-      - detect_changes
-      - order_restore
+    needs: detect_changes
     if: ${{ needs.detect_changes.outputs.order == 'true' || needs.detect_changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download restored artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: order-restore-obj
-          path: .
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/OrderAndDelivery/OrderAndDelivery.Api.csproj
 
       - name: Build
         run: dotnet build src/OrderAndDelivery/OrderAndDelivery.Api.csproj -c Release --no-restore
