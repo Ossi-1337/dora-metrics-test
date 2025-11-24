@@ -14,6 +14,7 @@ on:
 
   schedule:
   # run every 5 mins -> '*/5 * * * *'
+  # run every week -> '0 0 * * 0' - at midnight on Sunday
     - cron: '*/5 * * * *'
 
   workflow_dispatch:
