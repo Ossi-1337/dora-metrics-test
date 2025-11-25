@@ -163,6 +163,16 @@ jobs:
           ignore-unfixed: true
           severity: HIGH,CRITICAL
 
+      - name: Upload Trivy FS SARIF (Customer)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-customer-fs.sarif
+
+      - name: Upload Trivy image SARIF (Customer)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-customer-image.sarif
+
   security_order:
     name: Order & Delivery – security gates
     needs: detect_changed_services
@@ -222,3 +232,13 @@ jobs:
           output: trivy-order-image.sarif
           ignore-unfixed: true
           severity: HIGH,CRITICAL
+      
+      - name: Upload Trivy FS SARIF (Order & Delivery)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-order-fs.sarif
+
+      - name: Upload Trivy image SARIF (Order & Delivery)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-order-image.sarif
