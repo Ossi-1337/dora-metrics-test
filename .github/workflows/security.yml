@@ -246,3 +246,44 @@ jobs:
         with:
           sarif_file: trivy-order-image.sarif
           category: trivy-order-image
+
+  security_all_checks:
+    name: Security – all checks
+    runs-on: ubuntu-latest
+    needs:
+      - check_ci_status
+      - detect_changed_services
+      - codeql
+      - security_customer
+      - security_order
+    # Always run so we can explicitly fail even if others failed
+    if: always()
+
+    steps:
+      - name: Evaluate security job results
+        run: |
+          echo "check_ci_status:        ${{ needs.check_ci_status.result }}"
+          echo "detect_changed_services: ${{ needs.detect_changed_services.result }}"
+          echo "codeql:                 ${{ needs.codeql.result }}"
+          echo "security_customer:      ${{ needs.security_customer.result }}"
+          echo "security_order:         ${{ needs.security_order.result }}"
+
+          failed=false
+
+          for result in \
+            "${{ needs.check_ci_status.result }}" \
+            "${{ needs.codeql.result }}" \
+            "${{ needs.security_customer.result }}" \
+            "${{ needs.security_order.result }}"; do
+
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              failed=true
+            fi
+          done
+
+          if [ "$failed" = true ]; then
+            echo "One or more security jobs failed or were cancelled."
+            exit 1
+          fi
+
+          echo "All required security jobs succeeded (or were skipped)."
