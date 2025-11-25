@@ -167,11 +167,13 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-customer-fs.sarif
+          category: trivy-customer-fs
 
       - name: Upload Trivy image SARIF (Customer)
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-customer-image.sarif
+          category: trivy-customer-image
 
   security_order:
     name: Order & Delivery – security gates
@@ -237,8 +239,10 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-order-fs.sarif
+          category: trivy-order-fs
 
       - name: Upload Trivy image SARIF (Order & Delivery)
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-order-image.sarif
+          category: trivy-order-image
